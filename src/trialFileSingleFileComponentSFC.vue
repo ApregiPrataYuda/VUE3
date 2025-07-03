@@ -1,9 +1,17 @@
 <script setup>
-import { reactive, ref, onMounted, watch} from 'vue'
+import { reactive, ref, onMounted, watch, computed} from 'vue'
 import axios from 'axios'
+// untuk mencegah user spam di pagination (bahaya klo user spam di pagination karena laravel ga bisa menampung limit rate gede)
 import debounce from 'lodash/debounce'
 
+//untuk export data metode client-side
+import * as XLSX from 'xlsx'
+import { saveAs } from 'file-saver'
+
+//ini hanya untuk title
 const title = ref('LIST USER BY API')
+
+//ini ref untuk search
 const search = ref('')
 
 // 🔗 URL utama API
@@ -38,10 +46,12 @@ const pagination = reactive({
 })
 
 
-
-
 // 🔄 Loading state
 const loading = ref(false)
+
+// ini untuk select all
+const selectedUsers = ref([])
+
 
 // ✅ Fungsi untuk fetch data
 const fetchData = async (url = finalUrl) => {
@@ -158,7 +168,7 @@ const changePageSize = () => {
 
 
 
-// code untuk sort
+// code untuk sort dengan inputan
 const changeSorting = () => {
   pagination.current_page = 1
   const url = `${finalUrl}?page=1`
@@ -175,6 +185,91 @@ const resetFilters = () => {
   getData(finalUrl)
 }
 
+//untuk sort data di TH mirip jquery ini bagian icon
+const sortDirectionIcon = (col) => {
+  if (sort.column !== col) return 'fas fa-sort'
+  return sort.direction === 'asc' ? 'fas fa-arrow-up-wide-short' : 'fas fa-arrow-down-wide-short'
+}
+
+//untuk sort data di TH mirip jquery ini bagian logic
+const toggleSort = (col) => {
+  if (sort.column === col) {
+    sort.direction = sort.direction === 'asc' ? 'desc' : 'asc'
+  } else {
+    sort.column = col
+    sort.direction = 'asc'
+  }
+  changeSorting()
+}
+
+//ini untuk membuat export excel metode client 
+const exportToExcel = () => {
+  const data = users.map((user, index) => ({
+    No: index + 1 + (pagination.per_page * (pagination.current_page - 1)),
+    Nama: user.name,
+    Email: user.email,
+    Role: user.role,
+    Projects: user.projects?.join(', ') || '-',
+    'Tanggal Dibuat': formatDate(user.created_at),
+    'Tanggal Update': formatDate(user.updated_at)
+  }))
+
+  const worksheet = XLSX.utils.json_to_sheet(data)
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Users')
+
+  const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+  const blob = new Blob([excelBuffer], { type: 'application/octet-stream' })
+  saveAs(blob, `users-page-${pagination.current_page}.xlsx`)
+}
+
+
+//ini untuk select
+const allSelected = computed(() => {
+  return users.length > 0 && users.every(user => selectedUsers.value.includes(user.id))
+})
+
+const isAllSelected = computed(() => {
+  return users.length > 0 && selectedUsers.value.length === users.length
+})
+
+const toggleSelectAll = () => {
+  if (allSelected.value) {
+    // Uncheck semua user di halaman ini
+    users.forEach(user => {
+      const index = selectedUsers.value.indexOf(user.id)
+      if (index !== -1) {
+        selectedUsers.value.splice(index, 1)
+      }
+    })
+  } else {
+    // Tambahkan semua user di halaman ini
+    users.forEach(user => {
+      if (!selectedUsers.value.includes(user.id)) {
+        selectedUsers.value.push(user.id)
+      }
+    })
+  }
+}
+
+
+const toggleSelectUser = (id) => {
+  const idx = selectedUsers.value.indexOf(id)
+  if (idx !== -1) {
+    selectedUsers.value.splice(idx, 1)
+  } else {
+    selectedUsers.value.push(id)
+  }
+}
+
+//kode delete multiple
+const deleteSelectedUsers = () => {
+  if (confirm(`Yakin ingin menghapus user?`)) {
+    // this your api logic
+  }
+}
+
+
 
 // 🧠 Auto-load saat mount
 onMounted(() => {
@@ -187,12 +282,28 @@ onMounted(() => {
     <div class="col-md-10">
       <p class="h2">{{ title }}</p>
 
+       <!-- Reset button  -->
       <button class="btn btn-secondary mb-1" @click="resetFilters">
        <i class="fa fa-refresh mr-1"></i> Reset Filter
       </button>
+
+       <!-- export excel button -->
+      <button @click="exportToExcel" class="btn btn-success mb-1 ml-1">
+          <i class="fa fa-download mr-2 ml-2">  Export ke Excel Per Page</i> 
+        </button>
+
+        <!-- hapus select metode  button -->
+        <button
+          class="btn btn-danger mb-2 ml-1"
+          :disabled="selectedUsers.length === 0"
+          @click="deleteSelectedUsers"
+        >
+        <i class="fa fa-trash mr-2 ml-2"></i>  Hapus yang dipilih ({{ selectedUsers.length }})
+        </button>
+
       <div class="d-flex justify-content-between align-items-center mb-2">
         <button @click="show = true" class="btn btn-success">Add User</button>
-
+        
       <!-- Sorting -->
         <div class="form-inline">
         <label class="mr-2">Urutkan:</label>
@@ -240,11 +351,29 @@ onMounted(() => {
         <thead>
           <tr>
             <th style="width: 2%">#</th>
-            <th>Name</th>
+            <th style="width: 2%">
+              <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll">
+            </th>
+            <!-- dengan sort mirip jquery -->
+            <th 
+            @click="toggleSort('name')" 
+            style="cursor:pointer">
+              <i :class="sortDirectionIcon('name')" class="ml-0"
+               title="Klik untuk urutkan">
+              </i>
+              Nama 
+             </th>
             <th>Email</th>
             <th>Role</th>
             <th>Projects</th>
-            <th>Date Created</th>
+            <th 
+            @click="toggleSort('created_at')" 
+            style="cursor:pointer">
+              <i :class="sortDirectionIcon('created_at')" class="ml-0"
+               title="Klik untuk urutkan">
+              </i>
+              Created AT 
+             </th>
             <th>Last Updated</th>
             <th style="width: 9%">Handle</th>
           </tr>
@@ -332,6 +461,14 @@ onMounted(() => {
         <!-- Saat data tersedia -->
         <tr v-else v-for="(u, index) in users" :key="u.id || index">
             <td>{{ index + 1 + (pagination.per_page * (pagination.current_page - 1)) }}</td>
+            <td>
+            <input
+              type="checkbox"
+              :value="u.id"
+              :checked="selectedUsers.includes(u.id)"
+              @change="toggleSelectUser(u.id)"
+            />
+            </td>
             <td>{{ u.name }}</td>
             <td>{{ u.email }}</td>
             <td>{{ u.role }}</td>

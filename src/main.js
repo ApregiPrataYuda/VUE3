@@ -14,7 +14,13 @@ import { createApp } from 'vue'
 // import App from './event.vue'
 // import App from './state.vue'
 // import App from './Login.vue'
-import App from './trialFile.vue'
+import App from './trialFileSingleFileComponentSFC.vue'
+// import App from './trialFileVersiPinia.vue'
 // import App from './trials.vue'
 import '@fortawesome/fontawesome-free/css/all.min.css'
+import { createPinia } from 'pinia'
+const app = createApp(App)
+
+const pinia = createPinia()
+app.use(pinia)
 createApp(App).mount('#app')
